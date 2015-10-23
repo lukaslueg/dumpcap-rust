@@ -1,0 +1,28 @@
+[package]
+name = "dumpcap"
+version = "0.1.0"
+authors = ["Lukas Lueg <lukas.lueg@gmail.com>"]
+build = "build.rs"
+
+[dependencies]
+regex = "0.1.8"
+
+[[example]]
+name = "devices"
+path = "examples/devices/main.rs"
+
+[[example]]
+name = "statistics"
+path = "examples/statistics/main.rs"
+
+[[example]]
+name = "statistics_state"
+path = "examples/statistics_state/main.rs"
+
+[[example]]
+name = "capture"
+path = "examples/capture/main.rs"
+
+[[example]]
+name = "capture_state"
+path = "examples/capture_state/main.rs"

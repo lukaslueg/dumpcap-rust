@@ -1,0 +1,4 @@
+[package]
+name = "mock_dumpcap"
+version = "0.1.0"
+authors = ["Lukas Lueg <lukas.lueg@gmail.com>"]
