@@ -8,7 +8,7 @@ enum FailMode {
     Fast,
     Normal,
     Illegal,
-    BadFilter
+    BadFilter,
 }
 
 fn get_mock(fail_mode: Option<FailMode>) -> dumpcap::Dumpcap {
@@ -16,23 +16,23 @@ fn get_mock(fail_mode: Option<FailMode>) -> dumpcap::Dumpcap {
     let mut d = dumpcap::Dumpcap::new_with_executable(mock);
     if let Some(m) = fail_mode {
         d.extra_args = vec![match m {
-            FailMode::Fast => "--DUMPCAP_MOCK_FAIL_FAST",
-            FailMode::Normal => "--DUMPCAP_MOCK_FAIL_NORMAL",
-            FailMode::Illegal => "--DUMPCAP_MOCK_FAIL_ILLEGAL",
-            FailMode::BadFilter => "--DUMPCAP_MOCK_FAIL_FILTER"
-        }.to_string()];
+                                FailMode::Fast => "--DUMPCAP_MOCK_FAIL_FAST",
+                                FailMode::Normal => "--DUMPCAP_MOCK_FAIL_NORMAL",
+                                FailMode::Illegal => "--DUMPCAP_MOCK_FAIL_ILLEGAL",
+                                FailMode::BadFilter => "--DUMPCAP_MOCK_FAIL_FILTER",
+                            }
+                            .to_string()];
     }
     d
 }
 
 #[test]
 fn version_string() {
-    assert_eq!(get_mock(None).version_string().unwrap(),
-               "Mocked dumpcap");
+    assert_eq!(get_mock(None).version_string().unwrap(), "Mocked dumpcap");
 }
 
 #[test]
-fn verstion_string_fail_fast() {
+fn version_string_fail_fast() {
     let f = get_mock(Some(FailMode::Fast)).version_string().unwrap_err();
     assert_eq!(f.kind(), dumpcap::ErrorKind::DumpcapFailed);
     assert_eq!(f.description(), "Mock failed as it should");
@@ -53,12 +53,17 @@ fn interfaces() {
     assert!(!em1.is_loopback);
     let em1_caps = em1.capabilities.clone().unwrap();
     assert!(em1_caps.can_rfmon);
-    assert_eq!(em1_caps.llts, vec![dumpcap::LinkLayerType { dlt: 1,
-                                                            name: "EN10MB".to_owned(),
-                                                            description: "Ethernet".to_owned() },
-                                   dumpcap::LinkLayerType { dlt: 143,
-                                                            name: "DOCSIS".to_owned(),
-                                                            description: "DOCSIS".to_owned() }]);
+    assert_eq!(em1_caps.llts,
+               vec![dumpcap::LinkLayerType {
+                        dlt: 1,
+                        name: "EN10MB".to_owned(),
+                        description: "Ethernet".to_owned(),
+                    },
+                    dumpcap::LinkLayerType {
+                        dlt: 143,
+                        name: "DOCSIS".to_owned(),
+                        description: "DOCSIS".to_owned(),
+                    }]);
     let lo = &ifaces[1];
     assert_eq!(lo.dev_type.to_string(), "WIRED");
     assert_eq!(lo.name, "lo");
@@ -69,9 +74,12 @@ fn interfaces() {
     assert!(lo.is_loopback);
     let lo_caps = lo.capabilities.clone().unwrap();
     assert!(!lo_caps.can_rfmon);
-    assert_eq!(lo_caps.llts, vec![dumpcap::LinkLayerType { dlt: 1,
-                                                           name: "EN10MB".to_owned(),
-                                                           description: "Ethernet".to_owned() }]);
+    assert_eq!(lo_caps.llts,
+               vec![dumpcap::LinkLayerType {
+                        dlt: 1,
+                        name: "EN10MB".to_owned(),
+                        description: "Ethernet".to_owned(),
+                    }]);
 }
 
 #[test]
@@ -109,10 +117,18 @@ fn capabilities_fail_normal() {
 
 #[test]
 fn statistics() {
-    let expected = sync::Arc::new(sync::Mutex::new(
-            vec![dumpcap::DeviceStats{ name: "foo1".to_string(), packet_count: 4711, drop_count: 123 },
-                 dumpcap::DeviceStats{ name: "bar2".to_string(), packet_count: 4811, drop_count: 456 }].into_iter()));
-    let cb_fix =  expected.clone();
+    let expected = sync::Arc::new(sync::Mutex::new(vec![dumpcap::DeviceStats {
+                                                            name: "foo1".to_string(),
+                                                            packet_count: 4711,
+                                                            drop_count: 123,
+                                                        },
+                                                        dumpcap::DeviceStats {
+                                                            name: "bar2".to_string(),
+                                                            packet_count: 4811,
+                                                            drop_count: 456,
+                                                        }]
+                                                       .into_iter()));
+    let cb_fix = expected.clone();
     let callback = move |s| {
         if let Some(fix) = cb_fix.lock().unwrap().next() {
             assert_eq!(s, fix);
@@ -150,23 +166,35 @@ fn statistics_fail_illegal() {
 #[test]
 fn statistics_iter() {
     let mut got = get_mock(None).stats_iter().into_iter();
-    assert_eq!(got.next().unwrap().unwrap(), dumpcap::DeviceStats { name: "foo1".to_string(), packet_count: 4711, drop_count: 123 });
-    assert_eq!(got.next().unwrap().unwrap(), dumpcap::DeviceStats { name: "bar2".to_string(), packet_count: 4811, drop_count: 456 });
+    assert_eq!(got.next().unwrap().unwrap(),
+               dumpcap::DeviceStats {
+                   name: "foo1".to_string(),
+                   packet_count: 4711,
+                   drop_count: 123,
+               });
+    assert_eq!(got.next().unwrap().unwrap(),
+               dumpcap::DeviceStats {
+                   name: "bar2".to_string(),
+                   packet_count: 4811,
+                   drop_count: 456,
+               });
     assert!(got.next().is_none());
 }
 
 #[test]
 fn capture() {
-    let expected = sync::Arc::new(sync::Mutex::new(
-            vec![dumpcap::Message::File("foo.filename".to_string()),
-                 dumpcap::Message::PacketCount(123),
-                 dumpcap::Message::DropCount(456)].into_iter()));
+    let expected = sync::Arc::new(sync::Mutex::new(vec![dumpcap::Message::File("foo.filename"
+                                                                                   .to_string()),
+                                                        dumpcap::Message::PacketCount(123),
+                                                        dumpcap::Message::DropCount(456)]
+                                                       .into_iter()));
     let cb_fix = expected.clone();
     let callback = move |m| {
         assert_eq!(m, cb_fix.lock().unwrap().next().unwrap());
     };
-    let (mut child, handler) = get_mock(None).capture(dumpcap::Arguments::default(),
-                                                      callback).unwrap();
+    let (mut child, handler) = get_mock(None)
+                                   .capture(dumpcap::Arguments::default(), callback)
+                                   .unwrap();
     assert!(child.wait().unwrap().success());
     assert!(handler.join().is_ok());
     assert!(expected.lock().unwrap().next().is_none());
@@ -174,32 +202,36 @@ fn capture() {
 
 #[test]
 fn capture_fail_fast() {
-    let (mut child, handler) = get_mock(Some(FailMode::Fast)).capture(dumpcap::Arguments::default(),
-                                                                      |_| ()).unwrap();
+    let (mut child, handler) = get_mock(Some(FailMode::Fast))
+                                   .capture(dumpcap::Arguments::default(), |_| ())
+                                   .unwrap();
     assert!(!child.wait().unwrap().success());
     handler.join().unwrap().unwrap();
 }
 
 #[test]
 fn capture_fail_illegal() {
-    let (mut child, handler) = get_mock(Some(FailMode::Illegal)).capture(dumpcap::Arguments::default(),
-                                                                         |_| ()).unwrap();
+    let (mut child, handler) = get_mock(Some(FailMode::Illegal))
+                                   .capture(dumpcap::Arguments::default(), |_| ())
+                                   .unwrap();
     assert!(child.wait().unwrap().success());
     handler.join().unwrap().unwrap_err();
 }
 
 #[test]
 fn capture_fail_filter() {
-    let (mut child, handler) = get_mock(Some(FailMode::BadFilter)).capture(dumpcap::Arguments::default(),
-                                                                           |_| ()).unwrap();
+    let (mut child, handler) = get_mock(Some(FailMode::BadFilter))
+                                   .capture(dumpcap::Arguments::default(), |_| ())
+                                   .unwrap();
     assert!(!child.wait().unwrap().success());
     handler.join().unwrap().unwrap();
 }
 
 #[test]
 fn capture_fail_normal() {
-    let (mut child, handler) = get_mock(Some(FailMode::Normal)).capture(dumpcap::Arguments::default(),
-                                                                        |_| ()).unwrap();
+    let (mut child, handler) = get_mock(Some(FailMode::Normal))
+                                   .capture(dumpcap::Arguments::default(), |_| ())
+                                   .unwrap();
     assert!(!child.wait().unwrap().success());
     handler.join().unwrap().unwrap();
 }

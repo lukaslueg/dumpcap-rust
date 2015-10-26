@@ -1,7 +1,8 @@
 //! dumpcap provides an interface to Wireshark's dumpcap tool.
 //! You can use dumpcap to
 //!
-//!  * find out about available network interfaces and their supported capabilities.
+//! * find out about available network interfaces and their supported
+//! capabilities.
 //!  * Receive live statistics about traffic seen on each interface.
 //!  * Capture traffic and save it to disk for further processing.
 
@@ -10,7 +11,7 @@ use std::error::Error;
 use std::error;
 use std::ffi;
 use std::fmt;
-use std::io::{Read,BufRead};
+use std::io::{Read, BufRead};
 use std::io;
 use std::sync::mpsc;
 use std::num;
@@ -36,23 +37,23 @@ pub enum ErrorKind {
     /// This library was unable to parse a status message sent by dumpcap. This is a bug.
     InvalidMessage,
     /// Internal errors (e.g. io::Error)
-    Internal
+    Internal,
 }
 
 /// An opaque type recording error details
 #[derive(Debug)]
 pub struct DumpcapError {
     kind: ErrorKind,
-    error: Box<error::Error+Send+Sync>
+    error: Box<error::Error + Send + Sync>,
 }
 
 impl DumpcapError {
     fn new<E>(kind: ErrorKind, error: E) -> Self
-        where E: Into<Box<error::Error+Send+Sync>>
+        where E: Into<Box<error::Error + Send + Sync>>
     {
         DumpcapError {
             kind: kind,
-            error: error.into()
+            error: error.into(),
         }
     }
 
@@ -102,15 +103,15 @@ impl From<&'static str> for DumpcapError {
 }
 
 const DEVICES_REGEX: &'static str = concat!("(?m:^)",
-    r"(\d+)\. ", // the device number
-    "([^\t]+)\t", // the device name
-    "([^\t]*)\t", // the vendor name
-    "([^\t]*)\t", // the human friendly name
-    r"(\d+)\t", // the interface type
-    r"([a-fA-F0-9\.:,]*)\t", // known addresses
-    r"(\w+)", // "loopback" or "network"
-    "(?m:\r?$)", // newline
-    "");
+                                            r"(\d+)\. ", // the device number
+                                            "([^\t]+)\t", // the device name
+                                            "([^\t]*)\t", // the vendor name
+                                            "([^\t]*)\t", // the human friendly name
+                                            r"(\d+)\t", // the interface type
+                                            r"([a-fA-F0-9\.:,]*)\t", // known addresses
+                                            r"(\w+)", // "loopback" or "network"
+                                            "(?m:\r?$)", // newline
+                                            "");
 
 /// A prefixed Result-type that indicates the error condition by DumpcapError
 pub type Result<T> = result::Result<T, DumpcapError>;
@@ -122,7 +123,7 @@ pub struct Dumpcap {
     /// The executable to use, possibly including the full path
     pub executable: ffi::OsString,
     /// Raw extra arguments to pass to dumpcap
-    pub extra_args: Vec<String>
+    pub extra_args: Vec<String>,
 }
 
 impl Dumpcap {
@@ -132,25 +133,29 @@ impl Dumpcap {
     }
 
     /// Create a new Dumpcap-struct with the given executable (possibly including the full path)
-    pub fn new_with_executable<S>(executable: S) -> Dumpcap where S: convert::Into<ffi::OsString> {
-        Dumpcap { executable: executable.into(), extra_args: vec![] }
+    pub fn new_with_executable<S>(executable: S) -> Dumpcap
+        where S: convert::Into<ffi::OsString>
+    {
+        Dumpcap {
+            executable: executable.into(),
+            extra_args: vec![],
+        }
     }
 
     /// Return the first line "dumpcap -v" gives. The line usually takes the form "Dumpcap X.Y.Z
     /// (Git ...)"
     pub fn version_string(&self) -> Result<String> {
         let output = try!(process::Command::new(&self.executable)
-                          .arg("-v")
-                          .args(&self.extra_args)
-                          .output());
+                              .arg("-v")
+                              .args(&self.extra_args)
+                              .output());
         if !output.status.success() {
             return Err(DumpcapError::new(ErrorKind::DumpcapFailed,
                                          try!(String::from_utf8(output.stderr))));
         }
         match io::BufReader::new(io::Cursor::new(output.stdout)).lines().next() {
             Some(st) => Ok(try!(st)),
-            None => Err(DumpcapError::new(ErrorKind::DumpcapFailed,
-                                          "No output from dumpcap"))
+            None => Err(DumpcapError::new(ErrorKind::DumpcapFailed, "No output from dumpcap")),
         }
     }
 
@@ -165,68 +170,81 @@ impl Dumpcap {
     /// the given function. One should call .kill() on the Child to stop dumpcap and only then
     /// .join() on the JoinHandle to phase out processing dumpcap's output and check for errors.
     pub fn statistics<F>(&self, cb: F) -> Result<(process::Child, thread::JoinHandle<Result<()>>)>
-     where F: Fn(DeviceStats) + Send + 'static {
+        where F: Fn(DeviceStats) + Send + 'static
+    {
         let mut args = Arguments::default();
         args.child_mode = true;
         args.command = Some("-S".to_owned());
         let mut child = try!(process::Command::new(&self.executable)
-            .args(&args.build())
-            .args(&self.extra_args)
-            .stderr(process::Stdio::piped())
-            .stdin(process::Stdio::null())
-            .stdout(process::Stdio::piped())
-            .spawn());
+                                 .args(&args.build())
+                                 .args(&self.extra_args)
+                                 .stderr(process::Stdio::piped())
+                                 .stdin(process::Stdio::null())
+                                 .stdout(process::Stdio::piped())
+                                 .spawn());
         try!(PipeReader(child.stderr.take().unwrap()).wait_for_success_msg());
         let stdout = child.stdout.take().unwrap();
         Ok((child,
             thread::spawn(move || {
-                for line in io::BufReader::new(stdout).lines() {
-                    let l = &try!(line);
-                    cb(try!(parse_statistics(l)))
-                }
-                Ok(())
-            })))
+            for line in io::BufReader::new(stdout).lines() {
+                let l = &try!(line);
+                cb(try!(parse_statistics(l)))
+            }
+            Ok(())
+        })))
     }
 
     pub fn stats_iter(&self) -> DumpcapIterator<DeviceStats> {
         let (tx, rx) = mpsc::channel();
         let (child, handler) = self.statistics(move |s| tx.send(s).unwrap()).unwrap();
-        DumpcapIterator{ child: child, handler: Some(handler), rx: rx }
+        DumpcapIterator {
+            child: child,
+            handler: Some(handler),
+            rx: rx,
+        }
     }
 
-    pub fn capture<F>(&self, mut args: Arguments, cb: F) -> Result<(process::Child, thread::JoinHandle<Result<()>>)>
-     where F: Fn(Message) + Send + 'static {
+    pub fn capture<F>(&self,
+                      mut args: Arguments,
+                      cb: F)
+                      -> Result<(process::Child, thread::JoinHandle<Result<()>>)>
+        where F: Fn(Message) + Send + 'static
+    {
         args.child_mode = true;
         let mut child = try!(process::Command::new(&self.executable)
-            .args(&args.build())
-            .args(&self.extra_args)
-            .stderr(process::Stdio::piped())
-            .stdin(process::Stdio::null())
-            .stdout(process::Stdio::null())
-            .spawn());
+                                 .args(&args.build())
+                                 .args(&self.extra_args)
+                                 .stderr(process::Stdio::piped())
+                                 .stdin(process::Stdio::null())
+                                 .stdout(process::Stdio::null())
+                                 .spawn());
         let stderr = child.stderr.take().unwrap();
         Ok((child,
             thread::spawn(move || {
-                for msg in PipeReader(stderr) {
-                    cb(try!(msg));
-                }
-                Ok(())
-            })))
+            for msg in PipeReader(stderr) {
+                cb(try!(msg));
+            }
+            Ok(())
+        })))
 
     }
 
     pub fn capture_iter(&self, args: Arguments) -> DumpcapIterator<Message> {
         let (tx, rx) = mpsc::channel();
         let (child, handler) = self.capture(args, move |msg| tx.send(msg).unwrap()).unwrap();
-        DumpcapIterator{ child: child, handler: Some(handler), rx: rx }
+        DumpcapIterator {
+            child: child,
+            handler: Some(handler),
+            rx: rx,
+        }
     }
 
     pub fn query_devices(&self, capabilities: bool) -> Result<Vec<Device>> {
         let output = try!(process::Command::new(&self.executable)
-                          .arg("-M")
-                          .arg("-D")
-                          .args(&self.extra_args)
-                          .output());
+                              .arg("-M")
+                              .arg("-D")
+                              .args(&self.extra_args)
+                              .output());
         if !output.status.success() {
             return Err(DumpcapError::new(ErrorKind::DumpcapFailed,
                                          try!(String::from_utf8(output.stderr))));
@@ -238,18 +256,35 @@ impl Dumpcap {
             let caps = match capabilities {
                 true => match self.query_capabilities(dev_name) {
                     Ok(c) => Some(c),
-                    Err(..) => None
+                    Err(..) => None,
                 },
-                false => None
+                false => None,
             };
-            let dev = Device { dev_type: DeviceType::from(grp.at(5).unwrap()),
-                        name: dev_name.to_owned(),
-                        number: try!(grp.at(1).unwrap().parse()),
-                        vendor_name: grp.at(3).and_then(|s| match s { "" => None, _ => Some(s.to_owned())}),
-                        friendly_name: grp.at(4).and_then(|s| match s { "" => None, _ => Some(s.to_owned())}),
-                        addresses: grp.at(6).and_then(|s| match s { "" => None, _ => Some(s.split(",").map(|t| t.to_owned()).collect())}),
-                        is_loopback: grp.at(7).unwrap() == "loopback",
-                        capabilities: caps};
+            let dev = Device {
+                dev_type: DeviceType::from(grp.at(5).unwrap()),
+                name: dev_name.to_owned(),
+                number: try!(grp.at(1).unwrap().parse()),
+                vendor_name: grp.at(3).and_then(|s| {
+                    match s {
+                        "" => None,
+                        _ => Some(s.to_owned()),
+                    }
+                }),
+                friendly_name: grp.at(4).and_then(|s| {
+                    match s {
+                        "" => None,
+                        _ => Some(s.to_owned()),
+                    }
+                }),
+                addresses: grp.at(6).and_then(|s| {
+                    match s {
+                        "" => None,
+                        _ => Some(s.split(",").map(|t| t.to_owned()).collect()),
+                    }
+                }),
+                is_loopback: grp.at(7).unwrap() == "loopback",
+                capabilities: caps,
+            };
             v.push(dev);
         }
         Ok(v)
@@ -257,12 +292,12 @@ impl Dumpcap {
 
     pub fn query_capabilities(&self, dev_name: &str) -> Result<DeviceCapabilities> {
         let mut child = try!(process::Command::new(&self.executable)
-            .args(&["-L", "-Z", "none", "-i", dev_name])
-            .args(&self.extra_args)
-            .stdin(process::Stdio::null())
-            .stdout(process::Stdio::piped())
-            .stderr(process::Stdio::piped())
-            .spawn());
+                                 .args(&["-L", "-Z", "none", "-i", dev_name])
+                                 .args(&self.extra_args)
+                                 .stdin(process::Stdio::null())
+                                 .stdout(process::Stdio::piped())
+                                 .stderr(process::Stdio::piped())
+                                 .spawn());
 
         try!(PipeReader(child.stderr.take().unwrap()).wait_for_success_msg());
 
@@ -274,30 +309,37 @@ impl Dumpcap {
                 "0" => false,
                 _ => {
                     return Err(DumpcapError::new(ErrorKind::Internal,
-                                                 format!("Expected 0 or 1 to indicate rfmon, got {}", v)));
+                                                 format!("Expected 0 or 1 to indicate rfmon, \
+                                                          got {}",
+                                                         v)));
                 }
             },
             Some(Err(v)) => {
                 return Err(DumpcapError::from(v));
-            },
+            }
             None => {
-                return Err(DumpcapError::new(ErrorKind::DumpcapFailed,
-                                             "No output from dumpcap"));
+                return Err(DumpcapError::new(ErrorKind::DumpcapFailed, "No output from dumpcap"));
             }
         };
         for line_res in reader {
             let line = try!(line_res);
-            if line == "" { break };
+            if line == "" {
+                break;
+            }
             v.push(try!(parse_capabilities_line(&line)));
         }
         match child.wait() {
             Err(e) => Err(DumpcapError::from(e)),
             Ok(status) => {
                 if status.success() {
-                    Ok(DeviceCapabilities { can_rfmon: can_rfmon, llts: v})
+                    Ok(DeviceCapabilities {
+                        can_rfmon: can_rfmon,
+                        llts: v,
+                    })
                 } else {
                     Err(DumpcapError::new(ErrorKind::DumpcapFailed,
-                                          "Dumpcap had some output but exited with nonzero exit status."))
+                                          "Dumpcap had some output but exited with nonzero exit \
+                                           status."))
                 }
             }
         }
@@ -309,7 +351,11 @@ fn parse_statistics(s: &str) -> Result<DeviceStats> {
     let dev_name = try!(items.next().ok_or("No device name in output")).to_string();
     let pc = try!(try!(items.next().ok_or("No packet count in output")).parse());
     let dc = try!(try!(items.next().ok_or("No drop count in output")).parse());
-    Ok(DeviceStats{ name: dev_name, packet_count: pc, drop_count: dc })
+    Ok(DeviceStats {
+        name: dev_name,
+        packet_count: pc,
+        drop_count: dc,
+    })
 }
 
 fn parse_capabilities_line(line: &str) -> Result<LinkLayerType> {
@@ -318,8 +364,11 @@ fn parse_capabilities_line(line: &str) -> Result<LinkLayerType> {
         return Err(DumpcapError::new(ErrorKind::Internal,
                                      "Expected three columns of data per row"));
     }
-    Ok(LinkLayerType { dlt: try!(items[0].parse()), name: items[1].to_owned(),
-                       description: items[2].to_owned() })
+    Ok(LinkLayerType {
+        dlt: try!(items[0].parse()),
+        name: items[1].to_owned(),
+        description: items[2].to_owned(),
+    })
 }
 
 /// Reports the number of packets seen on the given interface
@@ -330,24 +379,27 @@ pub struct DeviceStats {
     /// The absolute number of packets seen on this interface
     pub packet_count: u64,
     /// The absolute number of packets dropped unseen
-    pub drop_count: u64
+    pub drop_count: u64,
 }
 
 /// An iterator over the messages coming from a capturing dumpcap sub-process
 pub struct DumpcapIterator<MsgType> {
     child: process::Child,
     handler: Option<thread::JoinHandle<Result<()>>>,
-    rx: mpsc::Receiver<MsgType>
+    rx: mpsc::Receiver<MsgType>,
 }
 
 impl<MsgType> Drop for DumpcapIterator<MsgType> {
     fn drop(&mut self) {
-        // Dumpcap might already have exited so the kill() could fail; maybe this error should get
+        // Dumpcap might already have exited so the kill() could fail; maybe this error
+        // should get
         // logged?
         let _ = self.child.kill();
         match self.handler.take() {
-            None => {},
-            Some(jh) => { assert!(jh.join().is_ok()); }
+            None => {}
+            Some(jh) => {
+                assert!(jh.join().is_ok());
+            }
         }
     }
 }
@@ -363,9 +415,16 @@ impl<MsgType> Iterator for DumpcapIterator<MsgType> {
                     Err(e) => Some(Err(DumpcapError::from(e))),
                     Ok(status) => {
                         if status.success() {
-                            self.handler.take()
-                                .and_then(|jh| jh.join().err().and(Some(Err(DumpcapError::new(ErrorKind::Internal,
-                                                                                              "The thread parsing dumpcap's output panicked")))))
+                            self.handler
+                                .take()
+                                .and_then(|jh| {
+                                    jh.join()
+                                      .err()
+                                      .and(Some(Err(DumpcapError::new(ErrorKind::Internal,
+                                                                      "The thread parsing \
+                                                                       dumpcap's output \
+                                                                       panicked"))))
+                                })
                         } else {
                             Some(Err(DumpcapError::new(ErrorKind::DumpcapFailed,
                                                        "Dumpcap quit with nonzero exit status")))
@@ -445,8 +504,7 @@ pub struct DeviceArguments {
     kernel_buffer_size: u64,
     link_layer_type: Option<String>,
     snapshot_length: u64,
-    wifi_channel: Option<String>
-
+    wifi_channel: Option<String>,
 }
 
 impl DeviceArguments {
@@ -455,13 +513,16 @@ impl DeviceArguments {
     fn build(mut self) -> Arguments {
         let mut args = Vec::new();
 
-        add_int_args!(args, ("-B", self.kernel_buffer_size),
-                            ("-s", self.snapshot_length));
-        add_string_args!(args, ("-f", self.capture_filter),
-                               ("-y", self.link_layer_type),
-                               ("-k", self.wifi_channel));
-        add_bool_args!(args, ("-p", self.disable_promiscuous_mode),
-                             ("-I", self.monitor_mode));
+        add_int_args!(args,
+                      ("-B", self.kernel_buffer_size),
+                      ("-s", self.snapshot_length));
+        add_string_args!(args,
+                         ("-f", self.capture_filter),
+                         ("-y", self.link_layer_type),
+                         ("-k", self.wifi_channel));
+        add_bool_args!(args,
+                       ("-p", self.disable_promiscuous_mode),
+                       ("-I", self.monitor_mode));
 
         if args.len() > 0 {
             self.arg.device_args.push("-i".to_owned());
@@ -478,7 +539,7 @@ pub enum FileFormats {
     /// Capture in PCAP-format
     PCAP,
     /// Capture in PCAPNG-format
-    PCAPNG
+    PCAPNG,
 }
 
 /// Controls options mostly for capturing network traffic
@@ -505,17 +566,23 @@ pub struct Arguments {
     switch_on_filesize: u64,
     use_threads: bool,
     command: Option<String>,
-    child_mode: bool
+    child_mode: bool,
 }
 
 impl Arguments {
 
     pub fn device_argument(self, dev_name: &str) -> DeviceArguments {
-        DeviceArguments { arg: self, dev_name: dev_name.to_owned(),
-                          capture_filter: None, disable_promiscuous_mode: false,
-                          monitor_mode: false, kernel_buffer_size: 0,
-                          link_layer_type: None, snapshot_length: 0,
-                          wifi_channel: None }
+        DeviceArguments {
+            arg: self,
+            dev_name: dev_name.to_owned(),
+            capture_filter: None,
+            disable_promiscuous_mode: false,
+            monitor_mode: false,
+            kernel_buffer_size: 0,
+            link_layer_type: None,
+            snapshot_length: 0,
+            wifi_channel: None,
+        }
     }
 
     argument_setter!((buffered_bytes, bytes, u64, "Maximum number of bytes used for buffering packets within dumpcap"),
@@ -538,7 +605,7 @@ impl Arguments {
             (switch_on_filesize, kilobytes, u64, "Switch to next file after this number of KB"),
             (use_threads, enable, bool, "Use a separate thread per interface"));
 
-    fn build(self) -> Vec<String>{
+    fn build(self) -> Vec<String> {
         let mut args = Vec::new();
 
         if let Some(c) = self.command {
@@ -546,35 +613,43 @@ impl Arguments {
         }
 
         if self.child_mode {
-            //TODO Windows is different here...
+            // TODO Windows is different here...
             args.push("-Z".to_string());
             args.push("none".to_string());
         }
 
-        add_int_args!(args, ("-C", self.buffered_bytes),
-                            ("-N", self.buffered_packets),
-                            ("-B", self.kernel_buffer_size),
-                            ("-s", self.snapshot_length),
-                            ("-c", self.stop_on_packet_count));
-        add_string_args!(args, ("-f", self.capture_filter),
-                               ("-w", self.file_name),
-                               ("-y", self.link_layer_type));
-        add_string_args!(args, "-a", ("files", self.stop_on_files),
-                                     ("duration", self.stop_on_duration),
-                                     ("filesize", self.stop_on_filesize));
-        add_string_args!(args, "-b", ("files", self.switch_on_files),
-                                     ("duration", self.switch_on_duration),
-                                     ("filesize", self.switch_on_filesize));
-        add_bool_args!(args, ("-p", self.disable_promiscuous_mode),
-                             ("-g", self.enable_group_access),
-                             ("-I", self.enable_monitor_mode),
-                             ("-t", self.use_threads));
+        add_int_args!(args,
+                      ("-C", self.buffered_bytes),
+                      ("-N", self.buffered_packets),
+                      ("-B", self.kernel_buffer_size),
+                      ("-s", self.snapshot_length),
+                      ("-c", self.stop_on_packet_count));
+        add_string_args!(args,
+                         ("-f", self.capture_filter),
+                         ("-w", self.file_name),
+                         ("-y", self.link_layer_type));
+        add_string_args!(args,
+                         "-a",
+                         ("files", self.stop_on_files),
+                         ("duration", self.stop_on_duration),
+                         ("filesize", self.stop_on_filesize));
+        add_string_args!(args,
+                         "-b",
+                         ("files", self.switch_on_files),
+                         ("duration", self.switch_on_duration),
+                         ("filesize", self.switch_on_filesize));
+        add_bool_args!(args,
+                       ("-p", self.disable_promiscuous_mode),
+                       ("-g", self.enable_group_access),
+                       ("-I", self.enable_monitor_mode),
+                       ("-t", self.use_threads));
 
         if let Some(f) = self.file_format {
             args.push(match f {
-                FileFormats::PCAP => "-P",
-                FileFormats::PCAPNG => "-n"
-            }.to_string());
+                          FileFormats::PCAP => "-P",
+                          FileFormats::PCAPNG => "-n",
+                      }
+                      .to_string());
         }
 
         args.extend(self.device_args.into_iter());
@@ -595,7 +670,7 @@ pub enum DeviceType {
     Virtual,
     Wired,
     Wireless,
-    Unknown(Option<u8>)
+    Unknown(Option<u8>),
 }
 
 impl<'a> From<&'a str> for DeviceType {
@@ -610,7 +685,7 @@ impl<'a> From<&'a str> for DeviceType {
             "6" => DeviceType::Dialup,
             "7" => DeviceType::USB,
             "8" => DeviceType::Virtual,
-            e => DeviceType::Unknown(e.parse().ok())
+            e => DeviceType::Unknown(e.parse().ok()),
         }
     }
 }
@@ -627,8 +702,9 @@ impl string::ToString for DeviceType {
             DeviceType::Virtual => "VIRTUAL",
             DeviceType::Wired => "WIRED",
             DeviceType::Wireless => "WIRELESS",
-            DeviceType::Unknown(..) => "UNKNOWN"
-        }.to_owned()
+            DeviceType::Unknown(..) => "UNKNOWN",
+        }
+        .to_owned()
     }
 }
 
@@ -638,7 +714,7 @@ impl string::ToString for DeviceType {
 pub struct LinkLayerType {
     pub dlt: u64,
     pub name: String,
-    pub description: String
+    pub description: String,
 }
 
 /// A physical or virtual device that can used to capture network traffic
@@ -656,7 +732,7 @@ pub struct Device {
     pub addresses: Option<Vec<String>>,
     /// True if the device is a local loopback
     pub is_loopback: bool,
-    pub capabilities: Option<DeviceCapabilities>
+    pub capabilities: Option<DeviceCapabilities>,
 }
 
 /// The link-layers a device can capture traffic on
@@ -667,7 +743,7 @@ pub struct DeviceCapabilities {
     /// A list of supported link-layer types.
     /// The list depends on wether the device has been put
     /// into monitor mode (if applicable).
-    pub llts: Vec<LinkLayerType>
+    pub llts: Vec<LinkLayerType>,
 }
 
 /// An incoming message from the dumpcap child-process
@@ -684,7 +760,7 @@ pub enum Message {
     /// The number of packets recently written to the currently active file
     PacketCount(u64),
     /// General success
-    Success(String)
+    Success(String),
 }
 
 /// Wrap another type that is io::Read so one can read parsed messages from the underlying stream
@@ -699,20 +775,22 @@ impl<T> PipeReader<T> where T: io::Read {
         let mut buffer = Vec::<u8>::with_capacity(4);
         match try!((&mut self.0).take(4).read_to_end(&mut buffer)) {
             0 => {
-                return Ok(None)
-            },
+                return Ok(None);
+            }
             1...3 => {
                 return Err(DumpcapError::new(ErrorKind::InvalidMessage, "Header was too short"));
-            },
+            }
             _ => {}
         }
 
         let msg_type = buffer[0];
-        let msg_size: u32 = ((buffer[1] as u32) << 16) | ((buffer[2] as u32) << 8) | ((buffer[3] as u32) << 0);
+        let msg_size: u32 = ((buffer[1] as u32) << 16) | ((buffer[2] as u32) << 8) |
+                            ((buffer[3] as u32) << 0);
 
         buffer = Vec::<u8>::with_capacity(msg_size as usize);
         if try!((&mut self.0).take(msg_size as u64).read_to_end(&mut buffer)) < msg_size as usize {
-            return Err(DumpcapError::new(ErrorKind::InvalidMessage, "Message was shorter than header said it would be"));
+            return Err(DumpcapError::new(ErrorKind::InvalidMessage,
+                                         "Message was shorter than header said it would be"));
         }
         Ok(Some((msg_type, buffer)))
     }
@@ -729,20 +807,30 @@ impl<T> PipeReader<T> where T: io::Read {
             None => Ok(None),
             Some((msg_type, msg)) => {
                 match msg_type {
-                    DROP_COUNT_MSG => Ok(Some(Message::DropCount(try!(try!(Self::msg_to_string(msg)).parse())))),
-                    PACKET_COUNT_MSG => Ok(Some(Message::PacketCount(try!(try!(Self::msg_to_string(msg)).parse())))),
+                    DROP_COUNT_MSG =>
+                        Ok(Some(Message::DropCount(try!(try!(Self::msg_to_string(msg)).parse())))),
+                    PACKET_COUNT_MSG =>
+                        Ok(Some(Message::PacketCount(try!(try!(Self::msg_to_string(msg)).parse())))),
                     ERROR_MSG => {
                         let mut err_reader = PipeReader(io::Cursor::new(msg));
-                        let err_msg1 = try!(try!(err_reader.read_pipe_msg())
-                                            .ok_or(DumpcapError::new(ErrorKind::InvalidMessage, "Error message missing part 1"))).1;
-                        let err_msg2 = try!(try!(err_reader.read_pipe_msg())
-                                            .ok_or(DumpcapError::new(ErrorKind::InvalidMessage, "Error message missing part 2"))).1;
-                        Ok(Some(Message::Error((try!(Self::msg_to_string(err_msg1)), try!(Self::msg_to_string(err_msg2))))))
-                    },
+                        let err_msg1 =
+                            try!(try!(err_reader.read_pipe_msg())
+                                     .ok_or(DumpcapError::new(ErrorKind::InvalidMessage,
+                                                              "Error message missing part 1")))
+                                .1;
+                        let err_msg2 =
+                            try!(try!(err_reader.read_pipe_msg())
+                                     .ok_or(DumpcapError::new(ErrorKind::InvalidMessage,
+                                                              "Error message missing part 2")))
+                                .1;
+                        Ok(Some(Message::Error((try!(Self::msg_to_string(err_msg1)),
+                                                try!(Self::msg_to_string(err_msg2))))))
+                    }
                     FILE_MSG => Ok(Some(Message::File(try!(Self::msg_to_string(msg))))),
                     SUCCESS_MSG => Ok(Some(Message::Success(try!(Self::msg_to_string(msg))))),
                     BAD_FILTER_MSG => Ok(Some(Message::BadFilter(try!(Self::msg_to_string(msg))))),
-                    _ => Err(DumpcapError::new(ErrorKind::InvalidMessage, format!("Unknown message type {}", msg_type)))
+                    _ => Err(DumpcapError::new(ErrorKind::InvalidMessage,
+                                               format!("Unknown message type {}", msg_type))),
                 }
             }
         }
@@ -755,9 +843,10 @@ impl<T> PipeReader<T> where T: io::Read {
                 let mut errmsg = e.0;
                 errmsg.push_str(&(e.1));
                 Err(DumpcapError::new(ErrorKind::DumpcapFailed, errmsg))
-            },
+            }
             None => Err(DumpcapError::new(ErrorKind::DumpcapFailed, "No output from dumpcap")),
-            Some(..) => Err(DumpcapError::new(ErrorKind::InvalidMessage, "Unexpected message from dumpcap"))
+            Some(..) =>
+                Err(DumpcapError::new(ErrorKind::InvalidMessage, "Unexpected message from dumpcap")),
         }
     }
 }
@@ -770,8 +859,8 @@ impl<T> Iterator for PipeReader<T> where T: io::Read {
             Err(e) => Some(Err(e)),
             Ok(v) => match v {
                 Some(msg) => Some(Ok(msg)),
-                None => None
-            }
+                None => None,
+            },
         }
     }
 }
@@ -812,10 +901,9 @@ fn deserialize_pipe_messages() {
 
 #[test]
 fn wait_for_msg_err() {
-   let r = PipeReader(io::Cursor::new(vec![ERROR_MSG, 0, 0, 13,
-                                           ERROR_MSG, 0, 0, 3, 70, 111, 0,
-                                           ERROR_MSG, 0, 0, 2, 111, 0]))
-       .wait_for_success_msg();
+    let r = PipeReader(io::Cursor::new(vec![ERROR_MSG, 0, 0, 13, ERROR_MSG, 0, 0, 3, 70, 111, 0,
+                                            ERROR_MSG, 0, 0, 2, 111, 0]))
+                .wait_for_success_msg();
     let err = r.unwrap_err();
     assert_eq!(err.kind(), ErrorKind::DumpcapFailed);
     assert_eq!(err.description(), "Foo");
@@ -824,21 +912,23 @@ fn wait_for_msg_err() {
 #[test]
 fn build_args() {
     assert_eq!(&Arguments::default()
-               .buffered_bytes(123)
-               .capture_filter(Some("foobar".to_owned()))
-               .enable_monitor_mode(true)
-               .file_format(Some(FileFormats::PCAPNG))
-               .stop_on_duration(456)
-               .switch_on_files(789)
-               .link_layer_type(Some("llt".to_owned()))
-               .build().join(" "),
+                    .buffered_bytes(123)
+                    .capture_filter(Some("foobar".to_owned()))
+                    .enable_monitor_mode(true)
+                    .file_format(Some(FileFormats::PCAPNG))
+                    .stop_on_duration(456)
+                    .switch_on_files(789)
+                    .link_layer_type(Some("llt".to_owned()))
+                    .build()
+                    .join(" "),
                "-C 123 -f foobar -y llt -a duration:456 -b files:789 -I -n");
     assert_eq!(&Arguments::default()
-               .use_threads(true)
-               .device_argument("eth1")
-                .monitor_mode(true)
-                .build()
-               .build().join(" "),
+                    .use_threads(true)
+                    .device_argument("eth1")
+                    .monitor_mode(true)
+                    .build()
+                    .build()
+                    .join(" "),
                "-t -i eth1 -I");
 }
 
