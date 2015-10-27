@@ -1,3 +1,5 @@
+#![deny(missing_docs, trivial_casts, trivial_numeric_casts, unsafe_code,
+        unstable_features, unused_import_braces, unused_qualifications)]
 //! dumpcap provides an interface to Wireshark's dumpcap tool.
 //! You can use dumpcap to
 //!
@@ -6,9 +8,7 @@
 //!  * Receive live statistics about traffic seen on each interface.
 //!  * Capture traffic and save it to disk for further processing.
 
-use std::convert;
 use std::error::Error;
-use std::error;
 use std::ffi;
 use std::fmt;
 use std::io::{Read, BufRead};
@@ -44,12 +44,12 @@ pub enum ErrorKind {
 #[derive(Debug)]
 pub struct DumpcapError {
     kind: ErrorKind,
-    error: Box<error::Error + Send + Sync>,
+    error: Box<Error + Send + Sync>,
 }
 
 impl DumpcapError {
     fn new<E>(kind: ErrorKind, error: E) -> Self
-        where E: Into<Box<error::Error + Send + Sync>>
+        where E: Into<Box<Error + Send + Sync>>
     {
         DumpcapError {
             kind: kind,
@@ -57,17 +57,18 @@ impl DumpcapError {
         }
     }
 
+    /// The major type of error
     pub fn kind(&self) -> ErrorKind {
         self.kind.clone()
     }
 }
 
-impl error::Error for DumpcapError {
+impl Error for DumpcapError {
     fn description(&self) -> &str {
         self.error.description()
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&Error> {
         self.error.cause()
     }
 }
@@ -134,7 +135,7 @@ impl Dumpcap {
 
     /// Create a new Dumpcap-struct with the given executable (possibly including the full path)
     pub fn new_with_executable<S>(executable: S) -> Dumpcap
-        where S: convert::Into<ffi::OsString>
+        where S: Into<ffi::OsString>
     {
         Dumpcap {
             executable: executable.into(),
@@ -194,6 +195,11 @@ impl Dumpcap {
         })))
     }
 
+    /// Call dumpcap to receive live statistics about arriving traffic
+    ///
+    /// Returns:
+    /// An iterator that blocks when advancing until new statistics from dumpcap are available. The
+    /// subprocess is terminated automatically when the iterator get's dropped.
     pub fn stats_iter(&self) -> DumpcapIterator<DeviceStats> {
         let (tx, rx) = mpsc::channel();
         let (child, handler) = self.statistics(move |s| tx.send(s).unwrap()).unwrap();
@@ -204,6 +210,15 @@ impl Dumpcap {
         }
     }
 
+    /// Call dumpcap to capture network data according to the given arguments.
+    ///
+    /// If the call to dumpcap succeeds, the given function is called with messages sent by the
+    /// dumpcap-subprocess.
+    ///
+    /// Returns:
+    /// Handles to the dumpcap-subprocess and the thread passing messages from dumpcap to the given
+    /// callback. One should call .kill() on the Child to stop dumpcap and only then .join() on the
+    /// JoinHandle to phase out processing dumpcap's output and check for errors.
     pub fn capture<F>(&self,
                       mut args: Arguments,
                       cb: F)
@@ -229,6 +244,11 @@ impl Dumpcap {
 
     }
 
+    /// Call dumpcap to capture network data according to the given arguments.
+    ///
+    /// Returns:
+    /// An iterator that blocks when advancing until new messages from dumpcap are available. The
+    /// subprocess is terminated automatically when the iterator get's dropped.
     pub fn capture_iter(&self, args: Arguments) -> DumpcapIterator<Message> {
         let (tx, rx) = mpsc::channel();
         let (child, handler) = self.capture(args, move |msg| tx.send(msg).unwrap()).unwrap();
@@ -239,6 +259,11 @@ impl Dumpcap {
         }
     }
 
+    /// Call dumpcap to receive a list of all devices possibly capable of capturing network
+    /// traffic.
+    ///
+    /// If capabilities is true, a second call to dumpcap is made for each device to find out about
+    /// supported link-layer types (monitor_mode is false during these calls).
     pub fn query_devices(&self, capabilities: bool) -> Result<Vec<Device>> {
         let output = try!(process::Command::new(&self.executable)
                               .arg("-M")
@@ -254,7 +279,7 @@ impl Dumpcap {
         for grp in regex::Regex::new(DEVICES_REGEX).unwrap().captures_iter(&stdout) {
             let dev_name = grp.at(2).unwrap();
             let caps = match capabilities {
-                true => match self.query_capabilities(dev_name) {
+                true => match self.query_capabilities(dev_name, false) {
                     Ok(c) => Some(c),
                     Err(..) => None,
                 },
@@ -290,9 +315,21 @@ impl Dumpcap {
         Ok(v)
     }
 
-    pub fn query_capabilities(&self, dev_name: &str) -> Result<DeviceCapabilities> {
+    /// Call dumpcap to query the given device for it's supported link-layer types and support for
+    /// capturing in monitor-mode.
+    ///
+    /// The device is put into monitor-mode before querying available link-layer types if
+    /// monitor_mode is true; this may cause the device to lose all currently active connections.
+    pub fn query_capabilities(&self,
+                              dev_name: &str,
+                              monitor_mode: bool)
+                              -> Result<DeviceCapabilities> {
+        let mut args = vec!["-L", "-Z", "none", "-i", dev_name];
+        if monitor_mode {
+            args.push("-I")
+        }
         let mut child = try!(process::Command::new(&self.executable)
-                                 .args(&["-L", "-Z", "none", "-i", dev_name])
+                                 .args(&args)
                                  .args(&self.extra_args)
                                  .stdin(process::Stdio::null())
                                  .stdout(process::Stdio::piped())
@@ -571,6 +608,7 @@ pub struct Arguments {
 
 impl Arguments {
 
+    /// Add a list of arguments for the named device
     pub fn device_argument(self, dev_name: &str) -> DeviceArguments {
         DeviceArguments {
             arg: self,
@@ -661,15 +699,25 @@ impl Arguments {
 /// The known device types like USB or WiFi
 #[derive(Debug)]
 pub enum DeviceType {
+    /// Airpcap
     Airpcap,
+    /// Bluetooth
     Bluetooth,
+    /// Dialup
     Dialup,
+    /// Pipe
     Pipe,
+    /// Stdin
     Stdin,
+    /// USB
     USB,
+    /// Virtual
     Virtual,
+    /// Wired
     Wired,
+    /// Wireless
     Wireless,
+    /// Unknown
     Unknown(Option<u8>),
 }
 
@@ -690,7 +738,7 @@ impl<'a> From<&'a str> for DeviceType {
     }
 }
 
-impl string::ToString for DeviceType {
+impl ToString for DeviceType {
     fn to_string(&self) -> String {
         match *self {
             DeviceType::Airpcap => "AIRPCAP",
@@ -712,8 +760,11 @@ impl string::ToString for DeviceType {
 /// A link-layer type known to dumpcap
 #[derive(Debug, Clone, PartialEq)]
 pub struct LinkLayerType {
+    /// An opaque number identifying this LLT
     pub dlt: u64,
+    /// The type's short name (e.g. "EN10MB")
     pub name: String,
+    /// A human-readable name (e.g. "Ethernet")
     pub description: String,
 }
 
@@ -724,7 +775,9 @@ pub struct Device {
     pub dev_type: DeviceType,
     /// The system's name for the device (e.g. "eth0")
     pub name: String,
+    /// An opaque number identifying this device
     pub number: u64,
+    /// The vendor name for this device
     pub vendor_name: Option<String>,
     /// A human-readable name for the device
     pub friendly_name: Option<String>,
@@ -732,6 +785,7 @@ pub struct Device {
     pub addresses: Option<Vec<String>>,
     /// True if the device is a local loopback
     pub is_loopback: bool,
+    /// A list of link-layers a device can capture traffic on
     pub capabilities: Option<DeviceCapabilities>,
 }
 
@@ -766,7 +820,7 @@ pub enum Message {
 /// Wrap another type that is io::Read so one can read parsed messages from the underlying stream
 struct PipeReader<T>(T);
 
-impl<T> PipeReader<T> where T: io::Read {
+impl<T> PipeReader<T> where T: Read {
     /// Read a single message from the underlying stream
     ///
     /// Tries to read the header and the message body, will block until the message is available or
@@ -813,16 +867,14 @@ impl<T> PipeReader<T> where T: io::Read {
                         Ok(Some(Message::PacketCount(try!(try!(Self::msg_to_string(msg)).parse())))),
                     ERROR_MSG => {
                         let mut err_reader = PipeReader(io::Cursor::new(msg));
-                        let err_msg1 =
-                            try!(try!(err_reader.read_pipe_msg())
+                        let err_msg1 = try!(try!(err_reader.read_pipe_msg())
                                      .ok_or(DumpcapError::new(ErrorKind::InvalidMessage,
                                                               "Error message missing part 1")))
-                                .1;
-                        let err_msg2 =
-                            try!(try!(err_reader.read_pipe_msg())
+                                           .1;
+                        let err_msg2 = try!(try!(err_reader.read_pipe_msg())
                                      .ok_or(DumpcapError::new(ErrorKind::InvalidMessage,
                                                               "Error message missing part 2")))
-                                .1;
+                                           .1;
                         Ok(Some(Message::Error((try!(Self::msg_to_string(err_msg1)),
                                                 try!(Self::msg_to_string(err_msg2))))))
                     }
@@ -851,7 +903,7 @@ impl<T> PipeReader<T> where T: io::Read {
     }
 }
 
-impl<T> Iterator for PipeReader<T> where T: io::Read {
+impl<T> Iterator for PipeReader<T> where T: Read {
     type Item = Result<Message>;
 
     fn next(&mut self) -> Option<Self::Item> {

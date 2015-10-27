@@ -98,20 +98,20 @@ fn interfaces_fail_illegal() {
 
 #[test]
 fn capabilities_fail_fast() {
-    let f = get_mock(Some(FailMode::Fast)).query_capabilities("foo1").unwrap_err();
+    let f = get_mock(Some(FailMode::Fast)).query_capabilities("foo1", false).unwrap_err();
     assert_eq!(f.kind(), dumpcap::ErrorKind::DumpcapFailed);
     assert_eq!(f.description(), "No output from dumpcap");
 }
 
 #[test]
 fn capabilities_fail_illegal() {
-    let f = get_mock(Some(FailMode::Illegal)).query_capabilities("foo1").unwrap_err();
+    let f = get_mock(Some(FailMode::Illegal)).query_capabilities("foo1", false).unwrap_err();
     assert_eq!(f.kind(), dumpcap::ErrorKind::Internal);
 }
 
 #[test]
 fn capabilities_fail_normal() {
-    assert_eq!(get_mock(Some(FailMode::Normal)).query_capabilities("foo1").unwrap_err().kind(),
+    assert_eq!(get_mock(Some(FailMode::Normal)).query_capabilities("foo1", false).unwrap_err().kind(),
                dumpcap::ErrorKind::DumpcapFailed);
 }
 
