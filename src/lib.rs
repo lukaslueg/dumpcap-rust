@@ -4,9 +4,9 @@
 //! You can use dumpcap to
 //!
 //! * find out about available network interfaces and their supported
-//! capabilities.
-//!  * Receive live statistics about traffic seen on each interface.
-//!  * Capture traffic and save it to disk for further processing.
+//!   capabilities.
+//! * Receive live statistics about traffic seen on each interface.
+//! * Capture traffic and save it to disk for further processing.
 
 use std::error::Error;
 use std::ffi;
