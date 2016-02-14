@@ -1,5 +1,8 @@
+#![cfg_attr(feature="clippy", feature(plugin))]
+#![cfg_attr(feature="clippy", plugin(clippy))]
+
 #![deny(missing_docs, trivial_casts, trivial_numeric_casts, unsafe_code,
-        unstable_features, unused_import_braces, unused_qualifications)]
+        unused_import_braces, unused_qualifications)]
 //! dumpcap provides an interface to Wireshark's dumpcap tool.
 //! You can use dumpcap to
 //!
@@ -278,13 +281,11 @@ impl Dumpcap {
         let mut v = Vec::new();
         for grp in regex::Regex::new(DEVICES_REGEX).unwrap().captures_iter(&stdout) {
             let dev_name = grp.at(2).unwrap();
-            let caps = match capabilities {
-                true => match self.query_capabilities(dev_name, false) {
+            let caps = if capabilities {
+                match self.query_capabilities(dev_name, false) {
                     Ok(c) => Some(c),
                     Err(..) => None,
-                },
-                false => None,
-            };
+                }} else { None };
             let dev = Device {
                 dev_type: DeviceType::from(grp.at(5).unwrap()),
                 name: dev_name.to_owned(),
@@ -385,7 +386,7 @@ impl Dumpcap {
 
 fn parse_statistics(s: &str) -> Result<DeviceStats> {
     let mut items = s.split("\t");
-    let dev_name = try!(items.next().ok_or("No device name in output")).to_string();
+    let dev_name = try!(items.next().ok_or("No device name in output")).to_owned();
     let pc = try!(try!(items.next().ok_or("No packet count in output")).parse());
     let dc = try!(try!(items.next().ok_or("No drop count in output")).parse());
     Ok(DeviceStats {
@@ -561,7 +562,7 @@ impl DeviceArguments {
                        ("-p", self.disable_promiscuous_mode),
                        ("-I", self.monitor_mode));
 
-        if args.len() > 0 {
+        if !args.is_empty() {
             self.arg.device_args.push("-i".to_owned());
             self.arg.device_args.push(self.dev_name);
             self.arg.device_args.extend(args.into_iter());
@@ -571,6 +572,7 @@ impl DeviceArguments {
 }
 
 /// Supported file-formats while capturing traffic
+#[allow(enum_variant_names)]
 #[derive(Debug)]
 pub enum FileFormats {
     /// Capture in PCAP-format
@@ -652,8 +654,8 @@ impl Arguments {
 
         if self.child_mode {
             // TODO Windows is different here...
-            args.push("-Z".to_string());
-            args.push("none".to_string());
+            args.push("-Z".to_owned());
+            args.push("none".to_owned());
         }
 
         add_int_args!(args,
@@ -687,7 +689,7 @@ impl Arguments {
                           FileFormats::PCAP => "-P",
                           FileFormats::PCAPNG => "-n",
                       }
-                      .to_string());
+                      .to_owned());
         }
 
         args.extend(self.device_args.into_iter());
@@ -839,7 +841,7 @@ impl<T> PipeReader<T> where T: Read {
 
         let msg_type = buffer[0];
         let msg_size: u32 = ((buffer[1] as u32) << 16) | ((buffer[2] as u32) << 8) |
-                            ((buffer[3] as u32) << 0);
+                            (buffer[3] as u32);
 
         buffer = Vec::<u8>::with_capacity(msg_size as usize);
         if try!((&mut self.0).take(msg_size as u64).read_to_end(&mut buffer)) < msg_size as usize {
