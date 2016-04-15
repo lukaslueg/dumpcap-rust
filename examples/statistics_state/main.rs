@@ -3,7 +3,7 @@ use std::sync::mpsc;
 extern crate dumpcap;
 
 fn main() {
-    let d = dumpcap::Dumpcap::new();
+    let d = dumpcap::Dumpcap::default();
     println!("{}", d.version_string().unwrap());
 
     let (tx, rx) = mpsc::channel();

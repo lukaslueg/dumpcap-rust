@@ -1,7 +1,7 @@
 extern crate dumpcap;
 
 fn main() {
-    let d = dumpcap::Dumpcap::new();
+    let d = dumpcap::Dumpcap::default();
     println!("{}", d.version_string().unwrap());
 
     for msg in d.capture_iter(dumpcap::Arguments::default()

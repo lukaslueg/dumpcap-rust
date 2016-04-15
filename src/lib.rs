@@ -117,7 +117,7 @@ const DEVICES_REGEX: &'static str = concat!("(?m:^)",
                                             "(?m:\r?$)", // newline
                                             "");
 
-/// A prefixed Result-type that indicates the error condition by DumpcapError
+/// A prefixed Result-type that indicates the error condition by `DumpcapError`
 pub type Result<T> = result::Result<T, DumpcapError>;
 
 
@@ -131,11 +131,6 @@ pub struct Dumpcap {
 }
 
 impl Dumpcap {
-    /// Create a new Dumpcap-struct with the executable set to "dumpcap"
-    pub fn new() -> Dumpcap {
-        Self::new_with_executable("dumpcap")
-    }
-
     /// Create a new Dumpcap-struct with the given executable (possibly including the full path)
     pub fn new_with_executable<S>(executable: S) -> Dumpcap
         where S: Into<ffi::OsString>
@@ -305,7 +300,7 @@ impl Dumpcap {
                 addresses: grp.at(6).and_then(|s| {
                     match s {
                         "" => None,
-                        _ => Some(s.split(",").map(|t| t.to_owned()).collect()),
+                        _ => Some(s.split(',').map(|t| t.to_owned()).collect()),
                     }
                 }),
                 is_loopback: grp.at(7).unwrap() == "loopback",
@@ -384,8 +379,15 @@ impl Dumpcap {
     }
 }
 
+impl Default for Dumpcap {
+    /// Create a new Dumpcap-struct with the executable set to "dumpcap"
+    fn default() -> Dumpcap {
+        Dumpcap::new_with_executable("dumpcap")
+    }
+}
+
 fn parse_statistics(s: &str) -> Result<DeviceStats> {
-    let mut items = s.split("\t");
+    let mut items = s.split('\t');
     let dev_name = try!(items.next().ok_or("No device name in output")).to_owned();
     let pc = try!(try!(items.next().ok_or("No packet count in output")).parse());
     let dc = try!(try!(items.next().ok_or("No drop count in output")).parse());
@@ -397,7 +399,7 @@ fn parse_statistics(s: &str) -> Result<DeviceStats> {
 }
 
 fn parse_capabilities_line(line: &str) -> Result<LinkLayerType> {
-    let items = line.split("\t").collect::<Vec<_>>();
+    let items = line.split('\t').collect::<Vec<_>>();
     if items.len() != 3 {
         return Err(DumpcapError::new(ErrorKind::Internal,
                                      "Expected three columns of data per row"));
@@ -698,7 +700,7 @@ impl Arguments {
     }
 }
 
-/// The known device types like USB or WiFi
+/// The known device types like USB or Wireless
 #[derive(Debug)]
 pub enum DeviceType {
     /// Airpcap
@@ -819,7 +821,7 @@ pub enum Message {
     Success(String),
 }
 
-/// Wrap another type that is io::Read so one can read parsed messages from the underlying stream
+/// Wrap another type that is `io::Read` so one can read parsed messages from the underlying stream
 struct PipeReader<T>(T);
 
 impl<T> PipeReader<T> where T: Read {
@@ -921,7 +923,7 @@ impl<T> Iterator for PipeReader<T> where T: Read {
 
 #[test]
 fn deserialize_pipe_messages() {
-    for (stream, expected_messages) in vec![
+    for &(ref stream, ref expected_messages) in &[
         (vec![],
          vec![]),
         (vec![99, 0, 0, 0],
