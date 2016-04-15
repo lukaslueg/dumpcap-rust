@@ -12,3 +12,4 @@ On most BSD/Linux distributions `dumpcap` comes suid'd so one can capture traffi
 
 
 [![Build Status](https://travis-ci.org/lukaslueg/dumpcap-rust.svg?branch=master)](https://travis-ci.org/lukaslueg/dumpcap-rust)
+[![Clippy Linting Result](https://clippy.bashy.io/github/lukaslueg/dumpcap-rust/master/badge.svg)](https://clippy.bashy.io/github/lukaslueg/dumpcap-rust/master/log)
